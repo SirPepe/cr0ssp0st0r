@@ -1,0 +1,21 @@
+{
+  "name": "cr0ssp0st0r",
+  "description": "Low-effort Mastodon-to-Bluesky cross-posting script",
+  "version": "0.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "run": "node index.js",
+    "dev": "node --env-file=.env index.js"
+  },
+  "author": "peter@peterkroener.de",
+  "license": "WTFPL",
+  "dependencies": {
+    "@atproto/api": "^0.13.16",
+    "@atproto/oauth-client-node": "^0.2.1",
+    "@sirpepe/shed": "^4.5.0",
+    "masto": "^6.10.1",
+    "node-persist": "^4.0.3",
+    "string-strip-html": "^13.4.8"
+  }
+}
