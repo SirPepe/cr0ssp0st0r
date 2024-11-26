@@ -2,11 +2,8 @@ import { createStreamingAPIClient, createRestAPIClient } from "masto";
 import { AtpAgent, RichText, AppBskyFeedPost } from "@atproto/api";
 import { stripHtml } from "string-strip-html";
 import { fail } from "@sirpepe/shed/error";
+import { countGraphemes } from "@sirpepe/shed/string";
 import storage from "node-persist";
-
-function countGraphemes(str) {
-  return Array.from(new Intl.Segmenter().segment(str)).length;
-}
 
 const {
   STORAGE_DIR = fail("env.STORAGE_DIR not set"),
@@ -100,9 +97,10 @@ async function* getMastodonStatusStream() {
   }
 }
 
-async function transloadMastodonMediaToBsky(mediaAttachments) {
+// sources: { url: string }[]
+async function transloadMastodonMediaToBsky(sources) {
   return await Promise.all(
-    mediaAttachments.map(async ({ url }) => {
+    sources.map(async ({ url }) => {
       try {
         const downloadResponse = await fetch(url);
         if (!downloadResponse.ok) {
@@ -122,7 +120,8 @@ async function transloadMastodonMediaToBsky(mediaAttachments) {
   );
 }
 
-// Non-image attachments are filtered out before this function ever gets called
+// Non-image attachments are currently filtered out before this function ever
+// gets called
 async function mastodonMediaToBskyEmbeds({ mediaAttachments }) {
   const blobs = await transloadMastodonMediaToBsky(mediaAttachments);
   return {
@@ -138,7 +137,24 @@ async function mastodonMediaToBskyEmbeds({ mediaAttachments }) {
   };
 }
 
-async function mastodonStatusToAtProtoPost(mastodonStatus) {
+async function mastodonCardToBskyEmbed({ card }) {
+  const embed = {
+    $type: "app.bsky.embed.external",
+    external: {
+      uri: card.url,
+      title: card.title,
+      description: card.description,
+    },
+  };
+  // TODO: does this work?
+  if (card.image) {
+    const [blob] = await transloadMastodonMediaToBsky([{ url: card.image }]);
+    embed.external.blob = blob.original;
+  }
+  return embed;
+}
+
+async function mastodonStatusToBskyPost(mastodonStatus) {
   const rt = new RichText({ text: reformatText(mastodonStatus) });
   await rt.detectFacets(agent);
   const post = {
@@ -157,8 +173,11 @@ async function mastodonStatusToAtProtoPost(mastodonStatus) {
       };
     }
   }
+  // I guess there can be only one embed per post?
   if (mastodonStatus.mediaAttachments.length > 0) {
     post.embed = await mastodonMediaToBskyEmbeds(mastodonStatus);
+  } else if (mastodonStatus.card) {
+    post.embed = await mastodonCardToBskyEmbed(mastodonStatus);
   }
   const validationResult = AppBskyFeedPost.validateRecord(post);
   if (validationResult.success) {
@@ -178,16 +197,16 @@ console.log("Ready to cross some posts 💪");
 for await (const mastodonStatus of getMastodonStatusStream()) {
   console.log(mastodonStatus);
   try {
-    const atProtoPost = await mastodonStatusToAtProtoPost(mastodonStatus);
-    const posted = await agent.post(atProtoPost);
+    const bskyPost = await mastodonStatusToBskyPost(mastodonStatus);
+    const posted = await agent.post(bskyPost);
     try {
       await storage.setItem(mastodonStatus.id, {
         bsky: {
           post: posted,
-          root: atProtoPost.reply?.root ?? null,
+          root: bskyPost.reply?.root ?? null,
         },
       });
-      console.log("Posted & saved", { atProtoPost, posted });
+      console.log("Posted & saved", { atProtoPost: bskyPost, posted });
     } catch (error) {
       console.error("Cross-posting worked, but result storage failed:", error);
     }
