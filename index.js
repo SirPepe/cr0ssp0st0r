@@ -89,7 +89,6 @@ async function* getMastodonStatusStream() {
       // TODO: support media attachments that are not images
       if (event.payload.mediaAttachments.some(({ type }) => type !== "image")) {
         console.log("Skipping post due to non-image media attachments");
-        console.log(event.payload);
         continue;
       }
       yield event.payload;
@@ -206,7 +205,7 @@ for await (const mastodonStatus of getMastodonStatusStream()) {
           root: bskyPost.reply?.root ?? null,
         },
       });
-      console.log("Posted & saved", { atProtoPost: bskyPost, posted });
+      console.log("Posted & saved", { mastodonStatus, bskyPost, posted });
     } catch (error) {
       console.error("Cross-posting worked, but result storage failed:", error);
     }
